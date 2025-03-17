@@ -1,85 +1,87 @@
-from sqlalchemy import create_engine, Column, Integer, String
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from fastapi import FastAPI, Depends, HTTPException
-from typing import List, Optional
+from typing import List
 
+# Create FastAPI instance
 app = FastAPI()
 
-DATABASE_URL = "sqlite:///./test.db"
-
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-
+# Database setup
+SQLALCHEMY_DATABASE_URL = "sqlite:///./products.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
 
-class User(Base):
-    __tablename__ = "users"
+# SQLAlchemy Product model
+class ProductDB(Base):
+    __tablename__ = "products"
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
+    description = Column(String)
+    price = Column(Float)
+    category = Column(String)
 
+# Create the database tables
 Base.metadata.create_all(bind=engine)
 
+# Pydantic model for response
+class Product(BaseModel):
+    id: int
+    name: str
+    description: str
+    price: float
+    category: str
+
+    class Config:
+        orm_mode = True
+
+# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-    
-class UserCreate(BaseModel):
-    name: str
-    email: str
 
-class UserResponse(BaseModel):
-    id: int
-    name: str
-    email: str    
+# Sample data to populate the database (runs once when starting the app)
+def populate_sample_data():
+    db = SessionLocal()
+    # Check if database is empty
+    if db.query(ProductDB).count() == 0:
+        sample_products = [
+            ProductDB(name="Laptop", description="High-performance laptop", price=999.99, category="Electronics"),
+            ProductDB(name="Smartphone", description="Latest model smartphone", price=699.99, category="Electronics"),
+            ProductDB(name="Desk Chair", description="Ergonomic office chair", price=199.99, category="Furniture"),
+            ProductDB(name="Coffee Maker", description="Automatic coffee machine", price=89.99, category="Appliances"),
+        ]
+        db.add_all(sample_products)
+        db.commit()
+    db.close()
 
-@app.post("/users/", response_model=UserResponse)
-def create_user(user: UserCreate, db:Session=Depends(get_db)):
-    db_user = User(name=user.name, email=user.email)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+# Run sample data population
+populate_sample_data()
 
-@app.get("/users/", response_model=List[UserResponse])
-def read_users(skip: int=0, Limit: int=10, db: Session=Depends(get_db)):
-    users = db.query(User).offset(skip).limit(Limit).all()
-    return users
-    
-@app.get("/users/[user_id]", response_model=List[UserResponse])
-def read_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+# Get all products endpoint
+@app.get("/products/", response_model=List[Product])
+def get_products():
+    db = next(get_db())
+    products = db.query(ProductDB).all()
+    return products
 
-class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
+# Optional: Get single product by ID
+@app.get("/products/{product_id}", response_model=Product)
+def get_product(product_id: int):
+    db = next(get_db())
+    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
 
-@app.put("/users/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, user:UserUpdate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    db_user.name = user.name if user.name is not None else db_user.name
-    db_user.email = user.email if user.email is not None else db_user.email
-    db.commit()
-    db.refresh(db_user)
-    return db_user    
-
-@app.delete("/users/{user_id}", response_model=UserResponse)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    db.delete(db_user)
-    db.commit()
-    return db_user
+@app.get("/", response_model=List[Product])
+def root():
+    db = next(get_db())
+    products = db.query(ProductDB).all()
+    return products
