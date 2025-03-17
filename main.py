@@ -5,16 +5,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from typing import List
 
-# Create FastAPI instance
 app = FastAPI()
 
-# Database setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///./products.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# SQLAlchemy Product model
 class ProductDB(Base):
     __tablename__ = "products"
 
@@ -24,10 +21,9 @@ class ProductDB(Base):
     price = Column(Float)
     category = Column(String)
 
-# Create the database tables
+
 Base.metadata.create_all(bind=engine)
 
-# Pydantic model for response
 class Product(BaseModel):
     id: int
     name: str
@@ -38,7 +34,6 @@ class Product(BaseModel):
     class Config:
         orm_mode = True
 
-# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -46,10 +41,8 @@ def get_db():
     finally:
         db.close()
 
-# Sample data to populate the database (runs once when starting the app)
 def populate_sample_data():
     db = SessionLocal()
-    # Check if database is empty
     if db.query(ProductDB).count() == 0:
         sample_products = [
             ProductDB(name="Laptop", description="High-performance laptop", price=999.99, category="Electronics"),
@@ -61,17 +54,14 @@ def populate_sample_data():
         db.commit()
     db.close()
 
-# Run sample data population
 populate_sample_data()
 
-# Get all products endpoint
 @app.get("/products/", response_model=List[Product])
 def get_products():
     db = next(get_db())
     products = db.query(ProductDB).all()
     return products
 
-# Optional: Get single product by ID
 @app.get("/products/{product_id}", response_model=Product)
 def get_product(product_id: int):
     db = next(get_db())
