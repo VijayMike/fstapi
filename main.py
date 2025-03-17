@@ -56,6 +56,12 @@ def populate_sample_data():
 
 populate_sample_data()
 
+@app.get("/", response_model=List[Product])
+def root():
+    db = next(get_db())
+    products = db.query(ProductDB).all()
+    return products
+
 @app.get("/products/", response_model=List[Product])
 def get_products():
     db = next(get_db())
@@ -69,9 +75,3 @@ def get_product(product_id: int):
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
-
-@app.get("/", response_model=List[Product])
-def root():
-    db = next(get_db())
-    products = db.query(ProductDB).all()
-    return products
